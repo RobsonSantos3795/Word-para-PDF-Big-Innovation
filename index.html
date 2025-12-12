@@ -1,0 +1,270 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Conversor DOCX para PDF</title>
+    <!-- Carregamento do Tailwind CSS para um visual moderno e responsivo -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <!-- Mammoth.js para converter DOCX para HTML -->
+    <script src="https://unpkg.com/mammoth@1.6.0/mammoth.browser.js"></script>
+    <!-- html2pdf.js para converter o HTML gerado para PDF -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/html2pdf.js/0.10.1/html2pdf.bundle.min.js"></script>
+    <script>
+        tailwind.config = {
+            theme: {
+                extend: {
+                    fontFamily: {
+                        sans: ['Inter', 'sans-serif'],
+                    },
+                    colors: {
+                        'accent-blue': '#1e40af',
+                        'success-green': '#059669',
+                    }
+                }
+            }
+        }
+    </script>
+    <style>
+        body {
+            font-family: 'Inter', sans-serif;
+            background-color: #f3f4f6;
+        }
+        /* Estilo para a área de pré-visualização (PDF renderizado) */
+        #pdfPreview {
+            border: 1px solid #d1d5db;
+            min-height: 500px;
+            background-color: white;
+            padding: 1rem;
+            overflow: auto;
+            border-radius: 0.5rem;
+        }
+    </style>
+</head>
+<body class="p-4 sm:p-8">
+
+    <div class="max-w-6xl mx-auto bg-white shadow-xl rounded-xl p-6 sm:p-10">
+        <header class="text-center mb-10">
+            <h1 class="text-3xl sm:text-4xl font-extrabold text-accent-blue mb-2">
+                Conversor DOCX para PDF
+            </h1>
+            <p class="text-gray-600">
+                Converta seus documentos Word (.docx) em PDF no seu navegador.
+                <span class="font-semibold text-red-500 block text-sm mt-2">
+                    Aviso: A formatação complexa do Word pode não ser preservada 100%.
+                </span>
+            </p>
+        </header>
+
+        <!-- Container Principal: Layout de duas colunas em telas grandes -->
+        <div class="grid lg:grid-cols-2 gap-8">
+            
+            <!-- Coluna de Configuração e Ação -->
+            <div class="space-y-6">
+                
+                <h2 class="text-2xl font-bold text-gray-800 border-b pb-2">1. Carregar e Converter</h2>
+
+                <!-- Entrada de Arquivo -->
+                <div class="p-4 border-2 border-dashed border-gray-300 rounded-lg hover:border-accent-blue transition-colors">
+                    <label for="wordFileInput" class="block text-lg font-medium text-gray-700 mb-2">
+                        Selecione o Arquivo Word (.docx)
+                    </label>
+                    <input type="file" id="wordFileInput" accept=".docx" class="w-full text-sm text-gray-500 file:mr-4 file:py-2 file:px-4 file:rounded-full file:border-0 file:text-sm file:font-semibold file:bg-accent-blue/10 file:text-accent-blue hover:file:bg-accent-blue/20">
+                </div>
+
+                <!-- Botão de Ação -->
+                <button id="convertButton" 
+                        class="w-full bg-success-green text-white py-3 px-6 rounded-lg font-bold shadow-md hover:bg-success-green/90 transition-all duration-300 disabled:bg-gray-400 disabled:cursor-not-allowed" 
+                        disabled>
+                    Converter para PDF
+                </button>
+
+                <!-- Mensagem de Status -->
+                <div id="statusMessage" class="hidden p-3 rounded-lg text-center font-medium"></div>
+
+                <!-- Botão de Download (Visível após a conversão) -->
+                <div id="downloadArea" class="hidden">
+                    <h2 class="text-2xl font-bold text-gray-800 border-b pb-2 mt-6">3. Baixar PDF</h2>
+                    <a id="downloadLink" href="#" download="documento_convertido.pdf"
+                       class="mt-4 w-full flex items-center justify-center bg-accent-blue text-white py-3 px-6 rounded-lg font-bold shadow-md hover:bg-accent-blue/90 transition-all duration-300">
+                        <svg class="w-5 h-5 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4"></path></svg>
+                        Baixar PDF (documento_convertido.pdf)
+                    </a>
+                </div>
+
+            </div>
+
+            <!-- Coluna de Pré-visualização -->
+            <div>
+                <h2 class="text-2xl font-bold text-gray-800 border-b pb-2">2. Pré-visualização do PDF</h2>
+                <div id="previewContainer" class="mt-4">
+                    <!-- A pré-visualização será injetada aqui -->
+                    <div id="pdfPreview" class="text-gray-500 flex items-center justify-center text-center">
+                        O conteúdo do seu PDF renderizado aparecerá aqui após a conversão.
+                    </div>
+                </div>
+            </div>
+
+        </div>
+    </div>
+
+    <script>
+        // Elementos do DOM
+        const wordFileInput = document.getElementById('wordFileInput');
+        const convertButton = document.getElementById('convertButton');
+        const statusMessageEl = document.getElementById('statusMessage');
+        const downloadAreaEl = document.getElementById('downloadArea');
+        const downloadLinkEl = document.getElementById('downloadLink');
+        const pdfPreviewEl = document.getElementById('pdfPreview');
+
+        let originalFileName = 'documento_convertido';
+        let docxFile = null;
+
+        // Função para mostrar mensagens de status
+        function showStatus(message, type = 'info') {
+            statusMessageEl.textContent = message;
+            statusMessageEl.className = 'p-3 rounded-lg text-center font-medium';
+            statusMessageEl.classList.remove('hidden');
+
+            switch (type) {
+                case 'loading':
+                    statusMessageEl.classList.add('bg-accent-blue/10', 'text-accent-blue');
+                    break;
+                case 'success':
+                    statusMessageEl.classList.add('bg-success-green/10', 'text-success-green');
+                    break;
+                case 'error':
+                    statusMessageEl.classList.add('bg-red-100', 'text-red-700');
+                    break;
+                case 'info':
+                default:
+                    statusMessageEl.classList.add('bg-gray-100', 'text-gray-700');
+                    break;
+            }
+        }
+
+        // Evento de seleção de arquivo Word
+        wordFileInput.addEventListener('change', (event) => {
+            docxFile = event.target.files[0];
+
+            if (docxFile && docxFile.name.endsWith('.docx')) {
+                convertButton.disabled = false;
+                originalFileName = docxFile.name.replace(/\.docx$/i, '');
+                downloadLinkEl.setAttribute('download', `${originalFileName}.pdf`);
+                showStatus(`Arquivo '${docxFile.name}' pronto para conversão.`, 'info');
+                
+                // Limpar resultados anteriores
+                downloadAreaEl.classList.add('hidden');
+                pdfPreviewEl.innerHTML = 'O conteúdo do seu PDF renderizado aparecerá aqui após a conversão.';
+                pdfPreviewEl.classList.add('flex', 'items-center', 'justify-center');
+
+            } else {
+                convertButton.disabled = true;
+                docxFile = null;
+                showStatus('Por favor, selecione um arquivo .docx válido.', 'error');
+            }
+        });
+
+
+        // Evento de Conversão
+        convertButton.addEventListener('click', async () => {
+            if (!docxFile) {
+                showStatus('Por favor, carregue um arquivo Word primeiro.', 'error');
+                return;
+            }
+
+            convertButton.disabled = true;
+            convertButton.textContent = 'A processar (DOCX -> HTML)...';
+            showStatus('Iniciando conversão de DOCX para HTML...', 'loading');
+            
+            downloadAreaEl.classList.add('hidden');
+            pdfPreviewEl.innerHTML = '';
+            pdfPreviewEl.classList.remove('flex', 'items-center', 'justify-center'); // Remover centralização durante o carregamento
+
+            try {
+                // 1. Ler o arquivo DOCX como ArrayBuffer
+                const arrayBuffer = await docxFile.arrayBuffer();
+
+                // 2. Converter DOCX para HTML usando Mammoth.js
+                // O styleMap ajuda a melhorar um pouco a formatação da saída
+                const { value: rawHtml } = await mammoth.convertToHtml({ arrayBuffer: arrayBuffer }, {
+                    styleMap: [
+                        "p[style-name='Title'] => h1",
+                        "p[style-name='Heading 1'] => h2",
+                        "p[style-name='Heading 2'] => h3",
+                        "p[style-name='Strong'] => strong",
+                        "r[style-name='Emphasis'] => em",
+                    ]
+                });
+
+                // 3. Preparar o Conteúdo HTML para o PDF
+                // Adicionamos a tag <style> para garantir um bom look no PDF/Preview
+                const finalHtmlContent = `
+                    <style>
+                        body { margin: 0; padding: 0; font-family: 'Inter', sans-serif; font-size: 11pt; line-height: 1.5; }
+                        h1, h2, h3, h4 { margin-top: 1.5em; margin-bottom: 0.5em; color: #1f2937; }
+                        p { margin-bottom: 1em; }
+                        img { max-width: 100%; height: auto; display: block; margin: 0 auto; }
+                        table { width: 100%; border-collapse: collapse; margin: 1em 0; }
+                        th, td { border: 1px solid #e5e7eb; padding: 8px; text-align: left; }
+                    </style>
+                    ${rawHtml}
+                `;
+
+                // Injetar HTML no Preview (para visualização do HTML que será convertido)
+                pdfPreviewEl.innerHTML = finalHtmlContent;
+                showStatus('Conversão para HTML concluída. A gerar PDF...', 'loading');
+                convertButton.textContent = 'A gerar PDF...';
+
+                // 4. Configurar e Gerar o PDF (usando o elemento de pré-visualização como fonte)
+                const pdfOptions = {
+                    margin: [10, 10, 10, 10], // Margens (top, left, bottom, right) em mm
+                    filename: `${originalFileName}.pdf`,
+                    image: { type: 'jpeg', quality: 0.98 },
+                    html2canvas: { scale: 2, logging: false },
+                    jsPDF: { unit: 'mm', format: 'a4', orientation: 'portrait' }
+                };
+                
+                // html2pdf precisa de um clone do elemento DOM para gerar o PDF de forma independente
+                const worker = html2pdf().set(pdfOptions);
+                const pdfBlob = await worker.from(pdfPreviewEl).output('blob');
+
+                // 5. Criar URL para Download
+                const pdfUrl = URL.createObjectURL(pdfBlob);
+
+                // 6. Atualizar UI
+                downloadLinkEl.href = pdfUrl;
+                downloadAreaEl.classList.remove('hidden');
+                
+                showStatus('Sucesso! O documento foi convertido e está pronto para pré-visualização e download.', 'success');
+
+            } catch (error) {
+                console.error('Erro durante a conversão:', error);
+                showStatus(`Erro crítico: ${error.message || 'Falha ao converter o arquivo.'} Verifique o console para mais detalhes.`, 'error');
+                
+                // Se der erro, restaurar o texto do preview
+                pdfPreviewEl.innerHTML = 'Erro na conversão. O conteúdo não pôde ser renderizado.';
+                pdfPreviewEl.classList.add('flex', 'items-center', 'justify-center');
+                
+            } finally {
+                convertButton.disabled = false;
+                convertButton.textContent = 'Converter para PDF';
+            }
+        });
+
+        // Limpeza inicial do estado
+        resetState = () => {
+            wordFileInput.value = '';
+            convertButton.disabled = true;
+            convertButton.textContent = 'Converter para PDF';
+            downloadAreaEl.classList.add('hidden');
+            pdfPreviewEl.innerHTML = 'O conteúdo do seu PDF renderizado aparecerá aqui após a conversão.';
+            pdfPreviewEl.classList.add('flex', 'items-center', 'justify-center');
+            statusMessageEl.classList.add('hidden');
+            docxFile = null;
+        }
+        resetState();
+    </script>
+
+</body>
+</html>
